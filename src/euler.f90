@@ -1,6 +1,7 @@
 module odeint__euler
 
   use odeint__config, only : wp
+  use odeint__util, only : linspace
 
   implicit none
 
@@ -46,23 +47,5 @@ contains
     end do
 
   end subroutine integrate
-
-  pure function linspace(a, b, num) result(y)
-
-    real(wp), intent(in) :: a
-    real(wp), intent(in) :: b
-    integer, intent(in) :: num
-    real(wp), dimension(num) :: y
-
-    integer :: i
-    real(wp) :: step
-
-    step = (b - a) / real(num - 1, wp)
-    y(1) = a
-    do i=2,num
-      y(i) = a + (i - 1) * step
-    end do
-
-  end function linspace
 
 end module odeint__euler

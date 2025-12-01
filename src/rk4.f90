@@ -1,6 +1,7 @@
 module odeint__rk4
 
   use odeint__config, only : wp
+  use odeint__util, only : linspace
 
   implicit none
 
@@ -83,23 +84,5 @@ contains
     step = h * (k1 + 2.0e0_wp * k2 + 2.0e0_wp * k3 + k4) / 6.0e0_wp
 
   end function
-
-  pure function linspace(a, b, num) result(y)
-
-    real(wp), intent(in) :: a
-    real(wp), intent(in) :: b
-    integer, intent(in) :: num
-    real(wp), dimension(num) :: y
-
-    integer :: i
-    real(wp) :: step
-
-    step = (b - a) / real(num - 1, wp)
-    y(1) = a
-    do i=2,num
-      y(i) = a + (i - 1) * step
-    end do
-
-  end function linspace
 
 end module odeint__rk4
