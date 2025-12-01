@@ -5,8 +5,6 @@ module odeint__euler
 
   implicit none
 
-  private :: linspace
-
   public :: integrate
 
   abstract interface

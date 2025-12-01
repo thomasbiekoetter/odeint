@@ -5,9 +5,7 @@ module odeint__rk4
 
   implicit none
 
-  private :: linspace
   private :: rk4
-
   public :: integrate
 
   abstract interface
