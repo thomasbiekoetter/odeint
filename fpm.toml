@@ -17,11 +17,11 @@ implicit-typing = false
 implicit-external = false
 source-form = "free"
 [[test]]
-name = "odeint__test_euler"
+name = "euler"
 source-dir = "test"
 main = "euler.f90"
 [[test]]
-name = "odeint__test_rk4"
+name = "rk4"
 source-dir = "test"
 main = "rk4.f90"
 
