@@ -36,7 +36,7 @@ RK4 integration: dy/dt = -y,  y(0) = 1
 
 ### Quadruple precision
 
-By default the library uses double precision (`real64`). To build with quadruple precision, pass the preprocessor flag:
+By default the library uses double precision (`real64`). To build with quadruple precision, pass the preprocessor flag (not yet supported by flang):
 
 ```sh
 fpm build --flag "-DQUAD"
@@ -52,22 +52,17 @@ Add odeint as a dependency in your project's `fpm.toml`:
 odeint = { git = "https://gitlab.com/thomas.biekoetter/odeint.git", profile="release" }
 ```
 
-Then `use` whichever integrator module you need:
-
+Then `use` the integrator module, plus the working precision kind:
 ```fortran
-use odeint__euler, only : integrate   ! Euler method
-use odeint__rk4,   only : integrate   ! Runge-Kutta 4
-use odeint__config, only : wp         ! working precision kind
+use odeint__integrate, only : integrate   ! generic integrator
+use odeint__config,    only : wp          ! working precision kind
 ```
 
-## User interface
-
-Both integrators expose the same `integrate` subroutine, so you can switch between methods by changing a single `use` statement.
-
-### `integrate` subroutine
-
+Select the method with the optional `method` argument — `"euler"` or `"rk4"`.
+If omitted, it defaults to `"euler"`:
 ```fortran
-subroutine integrate(dydt, y0, tstart, tend, nsteps, t, y)
+call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="euler") ! Euler
+call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rk4")   ! Runge-Kutta 4 (default)
 ```
 
 | Argument | Intent | Type | Description |
@@ -79,6 +74,7 @@ subroutine integrate(dydt, y0, tstart, tend, nsteps, t, y)
 | `nsteps` | in | `integer` | Number of time steps (including t0) |
 | `t(:)` | out | `real(wp), allocatable` | Time grid, length `nsteps` |
 | `y(:,:)` | out | `real(wp), allocatable` | Solution, shape `(nsteps, size(y0))` |
+| `method` | in (optional) | `character(len=*)` | Integration method |
 
 The time grid is uniformly spaced: `t(1) = tstart`, `t(nsteps) = tend`, step size `h = (tend - tstart) / (nsteps - 1)`.
 
@@ -112,9 +108,8 @@ The RK4 test program (`test/rk4.f90`) integrates dy/dt = -y with y(0) = 1 from t
 
 ```fortran
 program odeint__test_rk4
-
   use odeint__config, only : wp
-  use odeint__rk4, only : integrate
+  use odeint__integrate, only : integrate
 
   implicit none
 
@@ -125,7 +120,7 @@ program odeint__test_rk4
   real(wp), allocatable :: t(:)
   real(wp), allocatable :: y(:, :)
 
-  call integrate(exp_decay, y0, tstart, tend, nsteps, t, y)
+  call integrate(exp_decay, y0, tstart, tend, nsteps, t, y, method="rk4")
 
   write(*, '(A)')         "RK4 integration: dy/dt = -y,  y(0) = 1"
   write(*, '(A, I0)')     "  steps     : ", nsteps
@@ -136,8 +131,8 @@ program odeint__test_rk4
 
 contains
 
+  ! Example: exponential decay
   function exp_decay(y, t) result(dydt)
-
       real(wp), intent(in) :: y(:)
       real(wp), intent(in) :: t
       real(wp), allocatable :: dydt(:)

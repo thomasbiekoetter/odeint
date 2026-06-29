@@ -1,5 +1,4 @@
 program odeint__test_euler
-
   use odeint__config, only : wp
   use odeint__integrate, only : integrate
 
