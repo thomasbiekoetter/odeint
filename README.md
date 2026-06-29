@@ -5,7 +5,7 @@ A Fortran library for integrating ordinary differential equations (ODEs), built 
 ## Requirements
 
 - [fpm](https://fpm.fortran-lang.org/) >= 0.13
-- A Fortran compiler (gfortran >= 10 or Intel ifx/ifort)
+- A Fortran compiler (gfortran >= 10, Intel ifx/ifort or flang)
 
 ## Installation
 
