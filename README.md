@@ -4,7 +4,7 @@ A Fortran library for integrating ordinary differential equations (ODEs), built 
 
 ## Requirements
 
-- [fpm](https://fpm.fortran-lang.org/) >= 0.10
+- [fpm](https://fpm.fortran-lang.org/) >= 0.13
 - A Fortran compiler (gfortran >= 10 or Intel ifx/ifort)
 
 ## Installation
@@ -14,7 +14,7 @@ Clone the repository and build with fpm:
 ```sh
 git clone https://gitlab.com/thomas.biekoetter/odeint.git
 cd odeint
-fpm build
+fpm build --profile='release'
 ```
 
 Run the bundled tests to verify the build:
@@ -49,7 +49,7 @@ Add odeint as a dependency in your project's `fpm.toml`:
 
 ```toml
 [dependencies]
-odeint = { git = "https://gitlab.com/thomas.biekoetter/odeint.git" }
+odeint = { git = "https://gitlab.com/thomas.biekoetter/odeint.git", profile="release" }
 ```
 
 Then `use` whichever integrator module you need:

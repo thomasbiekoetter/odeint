@@ -1,5 +1,5 @@
 name = "odeint"
-version = "0.1.0"
+version = "1.0.0"
 license = "license"
 author = "Thomas"
 maintainer = "thomas.biekoetter@desy.de"
@@ -24,4 +24,15 @@ main = "euler.f90"
 name = "rk4"
 source-dir = "test"
 main = "rk4.f90"
+[features]
+debug.flags = "-fPIC -O0 -g "
+debug.gfortran.flags = "-fbounds-check -fbacktrace -Wall -Wuninitialized -fmax-errors=1 -fcheck=all -ffpe-trap=invalid,zero,overflow"
+debug.ifx.flags = "-check bounds -check pointer -traceback"
+release.flags = "-O3"
+release.gfortran.flags = "-march=native -fmax-errors=1 -ffixed-line-length-none -fno-range-check"
+release.ifx.flags = "-xHost -march"
+[profiles]
+debug = ["debug"]
+release = ["release"]
+
 
