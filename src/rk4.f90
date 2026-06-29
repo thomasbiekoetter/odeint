@@ -1,56 +1,14 @@
 module odeint__rk4
-
   use odeint__config, only : wp
   use odeint__util, only : linspace
-
+  use odeint__interfaces, only : dydt_abstract
   implicit none
 
-  private :: rk4
-  public :: integrate
-
-  abstract interface
-    function dydt_abstract(y, t) result(dydt)
-      import :: wp
-      implicit none
-      real(wp), intent(in) :: y(:)
-      real(wp), intent(in) :: t
-      real(wp), allocatable :: dydt(:)
-    end function dydt_abstract
-  end interface
+  public :: rk4
 
 contains
 
-  subroutine integrate(dydt, y0, tstart, tend, nsteps, t, y)
-
-    procedure(dydt_abstract) :: dydt
-    real(wp), intent(in) :: y0(:)
-    real(wp), intent(in) :: tstart
-    real(wp), intent(in) :: tend
-    integer, intent(in) :: nsteps
-    real(wp), allocatable, intent(out) :: t(:)
-    real(wp), allocatable, intent(out) :: y(:, :)
-
-    integer :: n
-    integer :: i
-    real(wp) :: h
-    real(wp), allocatable :: step(:)
-
-    n = size(y0)
-    allocate(y(nsteps, n))
-    y(1, :) = y0
-
-    t = linspace(tstart, tend, nsteps)
-    h = t(2) - t(1)
-
-    do i = 1, nsteps - 1
-      step = rk4(dydt, t(i), y(i, :), h)
-      y(i + 1, :) = y(i, :) + step
-    end do
-
-  end subroutine integrate
-
   function rk4(dydt, t, y, h) result(step)
-
     procedure(dydt_abstract) :: dydt
     real(wp), intent(in) :: t
     real(wp), intent(in) :: y(:)
@@ -81,6 +39,6 @@ contains
     k4 = dydt(yt, t + h)
     step = h * (k1 + 2.0e0_wp * k2 + 2.0e0_wp * k3 + k4) / 6.0e0_wp
 
-  end function
+  end function rk4
 
 end module odeint__rk4
