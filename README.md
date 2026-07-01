@@ -12,7 +12,7 @@ A Fortran library for integrating ordinary differential equations (ODEs), built 
 Clone the repository and build with fpm:
 
 ```sh
-git clone https://gitlab.com/thomas.biekoetter/odeint.git
+git clone https://github.com/thomasbiekoetter/odeint.git
 cd odeint
 fpm build --profile='release'
 ```
@@ -49,7 +49,7 @@ Add odeint as a dependency in your project's `fpm.toml`:
 
 ```toml
 [dependencies]
-odeint = { git = "https://gitlab.com/thomas.biekoetter/odeint.git", profile="release" }
+odeint = { git = "https://github.com/thomasbiekoetter/odeint.git", profile="release" }
 ```
 
 Then `use` the integrator module, plus the working precision kind:
