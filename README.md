@@ -1,6 +1,6 @@
 # odeint
 
-A Fortran library for integrating ordinary differential equations (ODEs), built with the [Fortran Package Manager (fpm)](https://fpm.fortran-lang.org/). Provides fixed-step Euler and fourth-order Runge-Kutta (RK4) integrators, plus an adaptive Cash-Karp Runge-Kutta method (RK45) with automatic step-size control, all behind a uniform interface.
+A Fortran library for integrating ordinary differential equations (ODEs), built with the [Fortran Package Manager (fpm)](https://fpm.fortran-lang.org/). Provides fixed-step Euler and fourth-order Runge-Kutta (RK4) integrators, plus an adaptive Cash-Karp Runge-Kutta method (RK45) with automatic step-size control, all behind a uniform interface. The adaptive stepper is also exposed directly for custom time loops (see [Single steps and custom time loops](#single-steps-and-custom-time-loops)).
 
 ## Requirements
 
@@ -23,7 +23,7 @@ Run the bundled tests to verify the build:
 fpm test --profile='release'
 ```
 
-Each test integrates exponential decay (dy/dt = -y, y(0) = 1) and prints the numerical solution, exact value, and absolute error at t = 5. For example, the `rk4` test gives:
+The `euler`, `rk4` and `rkck` tests integrate exponential decay (dy/dt = -y, y(0) = 1) and print the numerical solution, exact value, and absolute error at t = 5; the `rkqs_vec` test exercises the single-step interface. For example, the `rk4` test gives:
 
 ```
 RK4 integration: dy/dt = -y,  y(0) = 1
@@ -62,7 +62,7 @@ Select the method with the optional `method` argument; `"euler"`, `"rk4"`, or
 `"rkck"`. If omitted, it defaults to `"rkck"`:
 ```fortran
 call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="euler") ! Euler (fixed step)
-call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rk4")   ! Runge-Kutta 4 (default, fixed step)
+call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rk4")   ! Runge-Kutta 4 (fixed step)
 call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rkck")  ! adaptive Cash-Karp RK45
 ```
 
@@ -75,7 +75,7 @@ call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rkck")  ! adaptive 
 | `nsteps` | in | `integer` | Number of time steps (including t0) |
 | `t(:)` | out | `real(wp), allocatable` | Time grid, length `nsteps` |
 | `y(:,:)` | out | `real(wp), allocatable` | Solution, shape `(nsteps, size(y0))` |
-| `method` | in (optional) | `character(len=*)` | Integration method (`"euler"`, `"rk4"`, or `"rkck"`; default `"rk4"`) |
+| `method` | in (optional) | `character(len=*)` | Integration method (`"euler"`, `"rk4"`, or `"rkck"`; default `"rkck"`) |
 | `atol` | in (optional) | `real(wp)` | Absolute error tolerance (adaptive methods only; default `1e-9`) |
 | `rtol` | in (optional) | `real(wp)` | Relative error tolerance (adaptive methods only; default `1e-6`) |
 
@@ -175,6 +175,70 @@ To solve a system of equations, use a state vector with more than one component 
 RK4 makes four function evaluations per step but converges as O(h⁴), so it typically needs far fewer steps than Euler to achieve the same accuracy. Prefer RK4 unless you have a specific reason to use Euler.
 
 The adaptive Cash-Karp method (`"rkck"`) controls its own error instead of relying on a preset step count. It is the best choice when you need a target accuracy without hand-tuning `nsteps`, or when the solution has both fast and slow regions. It spends internal steps only where they are needed. Each accepted step costs six function evaluations, but it typically takes far fewer steps than a fixed-step method at the same accuracy. Set the accuracy with `atol`/`rtol` rather than with `nsteps` (see [Adaptive step size and error control](#adaptive-step-size-and-error-control)).
+
+## Single steps and custom time loops
+
+The `integrate` driver returns the solution on a uniform grid. When that
+does not fit — integrations that stop on a condition (event detection,
+shooting methods), per-component tolerances, or library code that must
+handle failures itself instead of aborting — the single-step routines of
+the Cash-Karp method can be called directly from `odeint__rkck`:
+
+```fortran
+use odeint__rkck, only : rkck      ! one embedded Cash-Karp step, fixed size
+use odeint__rkck, only : rkqs      ! one quality-controlled step (scalar tolerances)
+use odeint__rkck, only : rkqs_vec  ! one quality-controlled step (vector tolerances)
+```
+
+`rkck(dydt, t, y, h, step, yerr[, dydt0])` takes a single embedded step of
+fixed size `h` and returns the 5th-order increment `step` (so
+`y_new = y + step`) together with the componentwise error estimate `yerr`.
+
+`rkqs(dydt, t, y, htry, atol, rtol, hdid, hnext)` attempts a step of size
+`htry` and shrinks it until the scaled error is within tolerance, then
+advances `y` in place; `hdid` is the step actually taken and `hnext` a
+suggested size for the next step. It stops the program if the step size
+underflows.
+
+`rkqs_vec(dydt, t, y, htry, atol, rtol, step, hdid, hnext, ierr[, dydt0])`
+is the library-friendly variant of `rkqs`:
+
+- `atol(:)` and `rtol(:)` are arrays, so each component can carry its own
+  tolerance (e.g. a position and a velocity living on different scales);
+  the error of component `i` is kept below `max(atol(i), rtol(i)*|y(i)|)`.
+- `y` is not modified; the accepted increment is returned in `step`.
+- Failures are reported through `ierr` instead of `error stop`: the
+  module exports the codes `rkqs_ok`, `rkqs_err_underflow` (the step size
+  rounds down to zero) and `rkqs_err_max_tries` (too many step
+  reductions). On `ierr /= rkqs_ok` the outputs are meaningless.
+- If the derivative at `(t, y)` is already known it can be passed as
+  `dydt0`, saving one evaluation of `dydt` (also available for `rkck`).
+
+A minimal custom driver that stops on an event:
+
+```fortran
+use odeint__config, only : wp
+use odeint__rkck, only : rkqs_vec, rkqs_ok
+
+real(wp), allocatable :: y(:), step(:)
+real(wp) :: t, h, hdid, hnext
+integer :: ierr
+
+y = [1.0e0_wp, 0.0e0_wp]
+t = 0.0e0_wp
+h = 1.0e-2_wp
+do while (t < 10.0e0_wp .and. y(1) > 0.0e0_wp)  ! stop at the zero crossing
+  call rkqs_vec(dydt, t, y, h, [1.0e-12_wp, 1.0e-9_wp],  &
+                [1.0e-9_wp, 1.0e-9_wp], step, hdid, hnext, ierr)
+  if (ierr /= rkqs_ok) exit  ! handle the failure instead of aborting
+  y = y + step
+  t = t + hdid
+  h = hnext
+end do
+```
+
+`rkqs` itself is a thin wrapper around `rkqs_vec` with uniform
+tolerances, so the two take identical steps.
 
 ## License
 

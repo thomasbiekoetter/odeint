@@ -6,6 +6,15 @@ module odeint__rkck
   private
   public :: rkck
   public :: rkqs
+  public :: rkqs_vec
+  public :: rkqs_ok
+  public :: rkqs_err_underflow
+  public :: rkqs_err_max_tries
+
+  ! Status codes reported by rkqs_vec through `ierr`.
+  integer, parameter :: rkqs_ok = 0
+  integer, parameter :: rkqs_err_underflow = 1  ! step size rounds down to zero
+  integer, parameter :: rkqs_err_max_tries = 2  ! too many step reductions
 
   ! Cash-Karp parameters
   ! Nodes.
@@ -54,17 +63,24 @@ contains
   ! Single embedded Cash-Karp step.
   ! Returns the 5th-order increment `step` (so y_new = y + step) and the
   ! componentwise error estimate `yerr` = (5th order) - (4th order).
-  subroutine rkck(dydt, t, y, h, step, yerr)
+  ! If the derivative at (t, y) is already known it can be passed as
+  ! `dydt0`, saving one evaluation of `dydt`.
+  subroutine rkck(dydt, t, y, h, step, yerr, dydt0)
     procedure(dydt_abstract) :: dydt
     real(wp), intent(in) :: t
     real(wp), intent(in) :: y(:)
     real(wp), intent(in) :: h
     real(wp), allocatable, intent(out) :: step(:)
     real(wp), allocatable, intent(out) :: yerr(:)
+    real(wp), intent(in), optional :: dydt0(:)
 
     real(wp), allocatable :: k1(:), k2(:), k3(:), k4(:), k5(:), k6(:)
 
-    k1 = dydt(y, t)
+    if (present(dydt0)) then
+      k1 = dydt0
+    else
+      k1 = dydt(y, t)
+    end if
     k2 = dydt(y + h * (b21 * k1), t + a2 * h)
     k3 = dydt(y + h * (b31 * k1 + b32 * k2), t + a3 * h)
     k4 = dydt(y + h * (b41 * k1 + b42 * k2 + b43 * k3), t + a4 * h)
@@ -92,21 +108,75 @@ contains
     real(wp), intent(out) :: hdid
     real(wp), intent(out) :: hnext
 
-    real(wp), allocatable :: step(:), yerr(:), scaler(:)
+    real(wp), allocatable :: step(:)
+    integer :: ierr
+
+    call rkqs_vec(dydt, t, y, htry, spread(atol, 1, size(y)),  &
+                  spread(rtol, 1, size(y)), step, hdid, hnext, ierr)
+    if (ierr == rkqs_err_underflow) error stop "rkqs: step size underflow"
+    if (ierr /= rkqs_ok) error stop "rkqs: too many step reductions"
+    y = y + step
+
+  end subroutine rkqs
+
+  ! Quality-controlled step with per-component (vector) tolerances.
+  ! Like rkqs, but:
+  !   * `atol` and `rtol` are arrays, so each component can carry its own
+  !     tolerance (e.g. position and velocity living on different scales);
+  !     the tolerance for component i is max(atol(i), rtol(i) * |y(i)|).
+  !   * `y` is not advanced in place; the accepted 5th-order increment is
+  !     returned in `step` (so y_new = y + step).
+  !   * failures are reported through `ierr` (rkqs_ok, rkqs_err_underflow,
+  !     rkqs_err_max_tries) instead of stopping the program, so library
+  !     callers can handle them. On ierr /= rkqs_ok the outputs `step`,
+  !     `hdid` and `hnext` are meaningless.
+  !   * if the derivative at (t, y) is already known it can be passed as
+  !     `dydt0`, saving one evaluation of `dydt`.
+  subroutine rkqs_vec(dydt, t, y, htry, atol, rtol, step, hdid, hnext,  &
+                      ierr, dydt0)
+    procedure(dydt_abstract) :: dydt
+    real(wp), intent(in) :: t
+    real(wp), intent(in) :: y(:)
+    real(wp), intent(in) :: htry
+    real(wp), intent(in) :: atol(:)
+    real(wp), intent(in) :: rtol(:)
+    real(wp), allocatable, intent(out) :: step(:)
+    real(wp), intent(out) :: hdid
+    real(wp), intent(out) :: hnext
+    integer, intent(out) :: ierr
+    real(wp), intent(in), optional :: dydt0(:)
+
+    real(wp), allocatable :: k1(:), yerr(:), scaler(:)
     real(wp) :: h, htemp, errmax
     integer :: tries
 
+    ierr = rkqs_ok
+    hdid = 0.0e0_wp
+    hnext = htry
+
+    if (present(dydt0)) then
+      k1 = dydt0
+    else
+      k1 = dydt(y, t)
+    end if
+    scaler = max(atol, rtol * abs(y))
+
     h = htry
     do tries = 1, max_tries
-      call rkck(dydt, t, y, h, step, yerr)
-      scaler = max(atol, rtol * abs(y))
+      call rkck(dydt, t, y, h, step, yerr, dydt0=k1)
       errmax = maxval(abs(yerr / scaler))
       if (errmax <= 1.0e0_wp) exit
       ! Error too large: shrink, but by no more than a factor of 10.
       htemp = safety * h * errmax ** pshrnk
       h = sign(max(abs(htemp), 0.1e0_wp * abs(h)), h)
-      if (t + h == t) error stop "rkqs: step size underflow"
-      if (tries == max_tries) error stop "rkqs: too many step reductions"
+      if (t + h == t) then
+        ierr = rkqs_err_underflow
+        return
+      end if
+      if (tries == max_tries) then
+        ierr = rkqs_err_max_tries
+        return
+      end if
     end do
 
     ! Step accepted: propose the next step size (grow by at most factor 5).
@@ -117,8 +187,7 @@ contains
     end if
 
     hdid = h
-    y = y + step
 
-  end subroutine rkqs
+  end subroutine rkqs_vec
 
 end module odeint__rkck

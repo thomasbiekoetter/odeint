@@ -28,6 +28,10 @@ main = "rk4.f90"
 name = "rkck"
 source-dir = "test"
 main = "rkck.f90"
+[[test]]
+name = "rkqs_vec"
+source-dir = "test"
+main = "rkqs_vec.f90"
 [features]
 debug.flags = "-fPIC -O0 -g "
 debug.gfortran.flags = "-fbounds-check -fbacktrace -Wall -Wuninitialized -fmax-errors=1 -fcheck=all -ffpe-trap=invalid,zero,overflow"
