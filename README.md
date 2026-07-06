@@ -1,6 +1,6 @@
 # odeint
 
-A Fortran library for integrating ordinary differential equations (ODEs), built with the [Fortran Package Manager (fpm)](https://fpm.fortran-lang.org/). Provides Euler and fourth-order Runge-Kutta (RK4) integrators with a uniform interface.
+A Fortran library for integrating ordinary differential equations (ODEs), built with the [Fortran Package Manager (fpm)](https://fpm.fortran-lang.org/). Provides fixed-step Euler and fourth-order Runge-Kutta (RK4) integrators, plus an adaptive Cash-Karp Runge-Kutta method (RK45) with automatic step-size control, all behind a uniform interface.
 
 ## Requirements
 
@@ -20,10 +20,10 @@ fpm build --profile='release'
 Run the bundled tests to verify the build:
 
 ```sh
-fpm test
+fpm test --profile='release'
 ```
 
-Each test integrates exponential decay (dy/dt = -y, y(0) = 1) and prints the numerical solution, exact value, and absolute error at t = 5:
+Each test integrates exponential decay (dy/dt = -y, y(0) = 1) and prints the numerical solution, exact value, and absolute error at t = 5. For example, the `rk4` test gives:
 
 ```
 RK4 integration: dy/dt = -y,  y(0) = 1
@@ -39,8 +39,8 @@ RK4 integration: dy/dt = -y,  y(0) = 1
 By default the library uses double precision (`real64`). To build with quadruple precision, pass the preprocessor flag (not yet supported by flang):
 
 ```sh
-fpm build --flag "-DQUAD"
-fpm test  --flag "-DQUAD"
+fpm build --flag "-DQUAD" --profile='release'
+fpm test  --flag "-DQUAD" --profile='release'
 ```
 
 ## Using odeint in another fpm project
@@ -58,11 +58,12 @@ use odeint__integrate, only : integrate   ! generic integrator
 use odeint__config,    only : wp          ! working precision kind
 ```
 
-Select the method with the optional `method` argument — `"euler"` or `"rk4"`.
-If omitted, it defaults to `"euler"`:
+Select the method with the optional `method` argument; `"euler"`, `"rk4"`, or
+`"rkck"`. If omitted, it defaults to `"rkck"`:
 ```fortran
-call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="euler") ! Euler
-call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rk4")   ! Runge-Kutta 4 (default)
+call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="euler") ! Euler (fixed step)
+call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rk4")   ! Runge-Kutta 4 (default, fixed step)
+call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rkck")  ! adaptive Cash-Karp RK45
 ```
 
 | Argument | Intent | Type | Description |
@@ -74,11 +75,29 @@ call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rk4")   ! Runge-Kut
 | `nsteps` | in | `integer` | Number of time steps (including t0) |
 | `t(:)` | out | `real(wp), allocatable` | Time grid, length `nsteps` |
 | `y(:,:)` | out | `real(wp), allocatable` | Solution, shape `(nsteps, size(y0))` |
-| `method` | in (optional) | `character(len=*)` | Integration method |
+| `method` | in (optional) | `character(len=*)` | Integration method (`"euler"`, `"rk4"`, or `"rkck"`; default `"rk4"`) |
+| `atol` | in (optional) | `real(wp)` | Absolute error tolerance (adaptive methods only; default `1e-9`) |
+| `rtol` | in (optional) | `real(wp)` | Relative error tolerance (adaptive methods only; default `1e-6`) |
 
-The time grid is uniformly spaced: `t(1) = tstart`, `t(nsteps) = tend`, step size `h = (tend - tstart) / (nsteps - 1)`.
+The time grid is uniformly spaced: `t(1) = tstart`, `t(nsteps) = tend`, step size `h = (tend - tstart) / (nsteps - 1)`. This holds for every method — the adaptive method also returns its solution on this uniform grid (see [Adaptive step size and error control](#adaptive-step-size-and-error-control)).
 
 The solution array is indexed as `y(i, j)`, where `i` is the time index and `j` is the component index.
+
+### Adaptive step size and error control
+
+`"rkck"` is an adaptive Cash-Karp Runge-Kutta method — an embedded 4th/5th order pair. Rather than taking one fixed step per output interval, it substeps internally with automatic step-size control, shrinking the step where the solution changes quickly and growing it where the solution is smooth.
+
+For adaptive methods, `nsteps` sets only the number of *output* samples returned: the solver still lands exactly on the uniform grid `t`, but the number of internal steps taken between output points is chosen automatically to meet the requested accuracy. (For the fixed-step methods `"euler"` and `"rk4"`, `nsteps` is the number of steps actually taken.)
+
+Accuracy is set by the optional `atol` and `rtol` arguments. The per-component error is kept below `max(atol, rtol*|y|)`, so `atol` dominates near zero crossings and `rtol` dominates for large-magnitude components. Tighter tolerances produce smaller internal steps and more function evaluations:
+
+```fortran
+call integrate(  &
+  dydt, y0, tstart, tend, nsteps, t, y, &
+   method="rkck", rtol=1.0e-9_wp, atol=1.0e-12_wp)
+```
+
+Both tolerances are ignored by the fixed-step methods.
 
 ### `dydt` function signature
 
@@ -110,7 +129,6 @@ The RK4 test program (`test/rk4.f90`) integrates dy/dt = -y with y(0) = 1 from t
 program odeint__test_rk4
   use odeint__config, only : wp
   use odeint__integrate, only : integrate
-
   implicit none
 
   real(wp), parameter :: y0(1) = [1.0e0_wp]
@@ -148,12 +166,15 @@ To solve a system of equations, use a state vector with more than one component 
 
 ## Choosing a method
 
-| Method | Module | Order | Recommended use |
-|---|---|---|---|
-| Euler | `odeint__euler` | 1 | Quick prototyping; requires many steps for accuracy |
-| RK4 | `odeint__rk4` | 4 | General purpose; accurate with far fewer steps |
+| Method | Module | Order | Step size | Recommended use |
+|---|---|---|---|---|
+| Euler | `odeint__euler` | 1 | fixed | Quick prototyping; requires many steps for accuracy |
+| RK4 | `odeint__rk4` | 4 | fixed | General purpose; accurate with far fewer steps |
+| Cash-Karp (RK45) | `odeint__rkck` | 5(4) | adaptive | Error-controlled; efficient when the solution has both fast and slow regions |
 
 RK4 makes four function evaluations per step but converges as O(h⁴), so it typically needs far fewer steps than Euler to achieve the same accuracy. Prefer RK4 unless you have a specific reason to use Euler.
+
+The adaptive Cash-Karp method (`"rkck"`) controls its own error instead of relying on a preset step count. It is the best choice when you need a target accuracy without hand-tuning `nsteps`, or when the solution has both fast and slow regions. It spends internal steps only where they are needed. Each accepted step costs six function evaluations, but it typically takes far fewer steps than a fixed-step method at the same accuracy. Set the accuracy with `atol`/`rtol` rather than with `nsteps` (see [Adaptive step size and error control](#adaptive-step-size-and-error-control)).
 
 ## License
 
