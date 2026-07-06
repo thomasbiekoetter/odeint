@@ -33,7 +33,7 @@ contains
     if (present(method)) then
       method_ = method
     else
-      method_ = "rk4"
+      method_ = "rkck"
     end if
 
     atol_ = 1.0e-9_wp

@@ -7,7 +7,7 @@ program odeint__test_rkck
   real(wp), parameter :: y0(1) = [1.0e0_wp]
   real(wp), parameter :: tstart = 0.0e0_wp
   real(wp), parameter :: tend = 5.0e0_wp
-  integer, parameter :: nsteps = 100
+  integer, parameter :: nsteps = 25
   real(wp), allocatable :: t(:), y(:, :)
   real(wp) :: err, exact
 
