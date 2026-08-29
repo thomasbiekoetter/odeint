@@ -10,11 +10,13 @@ module odeint__rkck
   public :: rkqs_ok
   public :: rkqs_err_underflow
   public :: rkqs_err_max_tries
+  public :: rkqs_err_overflow
 
   ! Status codes reported by rkqs_vec through `ierr`.
   integer, parameter :: rkqs_ok = 0
   integer, parameter :: rkqs_err_underflow = 1  ! step size rounds down to zero
   integer, parameter :: rkqs_err_max_tries = 2  ! too many step reductions
+  integer, parameter :: rkqs_err_overflow = 3   ! step size grows without bound
 
   ! Cash-Karp parameters
   ! Nodes.
@@ -114,6 +116,7 @@ contains
     call rkqs_vec(dydt, t, y, htry, spread(atol, 1, size(y)),  &
                   spread(rtol, 1, size(y)), step, hdid, hnext, ierr)
     if (ierr == rkqs_err_underflow) error stop "rkqs: step size underflow"
+    if (ierr == rkqs_err_overflow) error stop "rkqs: step size overflow"
     if (ierr /= rkqs_ok) error stop "rkqs: too many step reductions"
     y = y + step
 
@@ -127,7 +130,8 @@ contains
   !   * `y` is not advanced in place; the accepted 5th-order increment is
   !     returned in `step` (so y_new = y + step).
   !   * failures are reported through `ierr` (rkqs_ok, rkqs_err_underflow,
-  !     rkqs_err_max_tries) instead of stopping the program, so library
+  !     rkqs_err_max_tries, rkqs_err_overflow) instead of stopping the
+  !     program, so library
   !     callers can handle them. On ierr /= rkqs_ok the outputs `step`,
   !     `hdid` and `hnext` are meaningless.
   !   * if the derivative at (t, y) is already known it can be passed as
@@ -183,6 +187,13 @@ contains
     if (errmax > errcon) then
       hnext = safety * h * errmax ** pgrow
     else
+      if (abs(h) > 0.2e0_wp * huge(h)) then
+        ! 5*h would overflow. This means a caller kept feeding hnext back
+        ! in while its stopping condition never triggered (the step size
+        ! has grown without bound); report it instead of raising an FPE.
+        ierr = rkqs_err_overflow
+        return
+      end if
       hnext = 5.0e0_wp * h
     end if
 
