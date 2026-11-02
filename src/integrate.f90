@@ -108,6 +108,7 @@ contains
     real(wp) :: hclamp
     real(wp) :: hdid
     real(wp) :: hnext
+    real(wp) :: dir      ! +1 for forward, -1 for backward integration
     real(wp), allocatable :: ycur(:)
 
     n = size(y0)
@@ -119,11 +120,14 @@ contains
     ! Initial step guess: the output spacing. step_qc adapts from here.
     h = t(2) - t(1)
     ycur = y0
+    dir = sign(1.0e0_wp, tend - tstart)
 
+    ! All comparisons below are multiplied by `dir` so that they hold for
+    ! both forward (tend > tstart) and backward (tend < tstart) integration.
     do i = 1, nsteps - 1
       tcur = t(i)
-      do while (tcur < t(i + 1))
-        if (tcur + h >= t(i + 1)) then
+      do while (dir * (t(i + 1) - tcur) > 0.0e0_wp)
+        if (dir * (tcur + h - t(i + 1)) >= 0.0e0_wp) then
           ! Clamp the final substep to land exactly on the output point.
           hclamp = t(i + 1) - tcur
           call step_qc(dydt, tcur, ycur, hclamp, atol, rtol, hdid, hnext)
@@ -131,7 +135,7 @@ contains
           ! If the step had to shrink for accuracy we did not reach the point
           ! yet, so adopt hnext. If the clamped step was accepted whole, keep
           ! the carried `h` so the next interval is not stuck at a tiny step.
-          if (hdid < hclamp) h = hnext
+          if (abs(hdid) < abs(hclamp)) h = hnext
         else
           call step_qc(dydt, tcur, ycur, h, atol, rtol, hdid, hnext)
           tcur = tcur + hdid

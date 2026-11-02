@@ -7,21 +7,11 @@ program odeint__test_rkck
   real(wp), parameter :: y0(1) = [1.0e0_wp]
   real(wp), parameter :: tstart = 0.0e0_wp
   real(wp), parameter :: tend = 5.0e0_wp
-  integer, parameter :: nsteps = 25
   real(wp), allocatable :: t(:), y(:, :)
   real(wp) :: err, exact
 
-  ! ---- Same form as the euler/rk4 tests ----
-  call integrate(exp_decay, y0, tstart, tend, nsteps, t, y, method="rkck")
-  write(*, '(A)')         "RKCK integration: dy/dt = -y,  y(0) = 1"
-  write(*, '(A, I0)')     "  steps     : ", nsteps
-  write(*, '(A, F6.2)')   "  t         : ", t(nsteps)
-  write(*, '(A, ES12.5)') "  y(t)      : ", y(nsteps, 1)
-  write(*, '(A, ES12.5)') "  exact     : ", exp(-t(nsteps))
-  write(*, '(A, ES12.5)') "  error     : ", abs(y(nsteps, 1) - exp(-t(nsteps)))
-
   ! ---- Test 1: exponential decay dy/dt = -y, y(0)=1 on [0,5] ----
-  call integrate(exp_decay, [1.0e0_wp], 0.0e0_wp, 5.0e0_wp, 6, t, y, &
+  call integrate(exp_decay, [1.0e0_wp], tstart, tend, 6, t, y, &
                  method="rkck", rtol=1.0e-10_wp, atol=1.0e-12_wp)
   exact = exp(-5.0e0_wp)
   err = abs(y(size(t), 1) - exact)
@@ -50,6 +40,20 @@ program odeint__test_rkck
   if (abs(t(11) - 7.0e0_wp) > 1.0e-13_wp) error stop "grid: wrong end"
   if (abs((t(2) - t(1)) - 0.5e0_wp) > 1.0e-13_wp) error stop "grid: not uniform"
   write(*, '(A)') "rkck: output grid is exactly uniform [OK]"
+
+  ! ---- Test 4: backward integration dy/dt = -y, y(0)=1 on [0,-5] ----
+  ! Exact solution y(-5) = exp(5).
+  call integrate(exp_decay, [1.0e0_wp], 0.0e0_wp, -5.0e0_wp, 6, t, y, &
+                 method="rkck", rtol=1.0e-10_wp, atol=1.0e-12_wp)
+  exact = exp(5.0e0_wp)
+  err = abs(y(size(t), 1) - exact) / exact
+  write(*, '(A)')         "rkck: backward, dy/dt = -y,  y(0)=1"
+  write(*, '(A,ES13.6)')  "  y(-5)  : ", y(size(t), 1)
+  write(*, '(A,ES13.6)')  "  exact  : ", exact
+  write(*, '(A,ES13.6)')  "  relerr : ", err
+  write(*, '(A,6F9.4)')   "  grid   : ", t
+  if (abs(t(size(t)) + 5.0e0_wp) > 1.0e-13_wp) error stop "backward: wrong end"
+  if (err > 1.0e-8_wp) error stop "backward: error above tolerance"
 
   write(*, '(A)') "All rkck tests passed."
 
