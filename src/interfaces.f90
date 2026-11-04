@@ -27,13 +27,14 @@ module odeint__interfaces
   ! Quality-controlled adaptive step. Attempts a step of size `htry` from
   ! (t, y); on success advances `y` in place, reports the step actually taken
   ! (`hdid`) and a suggested next step size (`hnext`). Error is controlled to
-  ! within max(atol, rtol*|y|) componentwise. Any adaptive method (Cash-Karp,
-  ! Dormand-Prince, Fehlberg, ...) can implement this and be driven by
-  ! run_adaptive.
+  ! within max(atol, rtol*|y|) componentwise. If `ierr` is present, failures
+  ! are reported through it (leaving `y` unchanged) instead of stopping the
+  ! program. Any adaptive method (Cash-Karp, Dormand-Prince, Fehlberg, ...)
+  ! can implement this and be driven by run_adaptive.
   abstract interface
     subroutine adaptive_stepper_abstract(  &
         dydt, t, y, htry, atol, rtol, &
-        hdid, hnext)
+        hdid, hnext, ierr)
       import :: wp, dydt_abstract
       implicit none
       procedure(dydt_abstract) :: dydt
@@ -44,6 +45,7 @@ module odeint__interfaces
       real(wp), intent(in) :: rtol
       real(wp), intent(out) :: hdid
       real(wp), intent(out) :: hnext
+      integer, intent(out), optional :: ierr
     end subroutine adaptive_stepper_abstract
   end interface
 

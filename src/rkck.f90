@@ -100,7 +100,9 @@ contains
   ! in place. Reports the step actually taken (`hdid`) and a suggested next
   ! step size (`hnext`). Tolerance per component is max(atol, rtol*|y|), so
   ! the accepted error is below the larger of the absolute and relative bound.
-  subroutine rkqs(dydt, t, y, htry, atol, rtol, hdid, hnext)
+  ! If `ierr` is present, failures are reported through it (y is left
+  ! unchanged) instead of stopping the program.
+  subroutine rkqs(dydt, t, y, htry, atol, rtol, hdid, hnext, ierr)
     procedure(dydt_abstract) :: dydt
     real(wp), intent(in) :: t
     real(wp), intent(inout) :: y(:)
@@ -109,15 +111,20 @@ contains
     real(wp), intent(in) :: rtol
     real(wp), intent(out) :: hdid
     real(wp), intent(out) :: hnext
+    integer, intent(out), optional :: ierr
 
     real(wp), allocatable :: step(:)
-    integer :: ierr
+    integer :: ierr_
 
     call rkqs_vec(dydt, t, y, htry, spread(atol, 1, size(y)),  &
-                  spread(rtol, 1, size(y)), step, hdid, hnext, ierr)
-    if (ierr == rkqs_err_underflow) error stop "rkqs: step size underflow"
-    if (ierr == rkqs_err_overflow) error stop "rkqs: step size overflow"
-    if (ierr /= rkqs_ok) error stop "rkqs: too many step reductions"
+                  spread(rtol, 1, size(y)), step, hdid, hnext, ierr_)
+    if (present(ierr)) then
+      ierr = ierr_
+      if (ierr_ /= rkqs_ok) return
+    end if
+    if (ierr_ == rkqs_err_underflow) error stop "rkqs: step size underflow"
+    if (ierr_ == rkqs_err_overflow) error stop "rkqs: step size overflow"
+    if (ierr_ /= rkqs_ok) error stop "rkqs: too many step reductions"
     y = y + step
 
   end subroutine rkqs

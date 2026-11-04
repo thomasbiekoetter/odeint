@@ -78,6 +78,7 @@ call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rkck")  ! adaptive 
 | `method` | in (optional) | `character(len=*)` | Integration method (`"euler"`, `"rk4"`, or `"rkck"`; default `"rkck"`) |
 | `atol` | in (optional) | `real(wp)` | Absolute error tolerance (adaptive methods only; default `1e-9`) |
 | `rtol` | in (optional) | `real(wp)` | Relative error tolerance (adaptive methods only; default `1e-6`) |
+| `ierr` | out (optional) | `integer` | Status code; if present, failures are reported here instead of stopping the program (see [Error handling](#error-handling)) |
 
 The time grid is uniformly spaced: `t(1) = tstart`, `t(nsteps) = tend`, step size `h = (tend - tstart) / (nsteps - 1)`. This holds for every method — the adaptive method also returns its solution on this uniform grid (see [Adaptive step size and error control](#adaptive-step-size-and-error-control)).
 
@@ -98,6 +99,33 @@ call integrate(  &
 ```
 
 Both tolerances are ignored by the fixed-step methods.
+
+### Error handling
+
+The adaptive method can fail, e.g. when the step size shrinks until
+`t + h == t` because the right-hand side cannot be resolved (a stiff or
+singular region, or non-finite values from `dydt`). By default `integrate`
+then aborts with `error stop`. To handle the failure in the calling
+program instead, pass the optional `ierr` argument; `integrate` then
+returns with the status code set:
+
+```fortran
+use odeint__integrate, only : integrate, rkqs_ok
+
+integer :: ierr
+
+call integrate(dydt, y0, tstart, tend, nsteps, t, y, method="rkck", ierr=ierr)
+if (ierr /= rkqs_ok) then
+  ! the integration failed; handle it here instead of aborting
+end if
+```
+
+The status codes `rkqs_ok`, `rkqs_err_underflow` (the step size rounds
+down to zero), `rkqs_err_max_tries` (too many step reductions) and
+`rkqs_err_overflow` (the step size grows without bound) are exported by
+`odeint__integrate`. On failure, `y` holds the solution up to the last
+output point reached; the remaining rows are set to NaN. The fixed-step
+methods always return `rkqs_ok`.
 
 ### `dydt` function signature
 
@@ -198,7 +226,8 @@ fixed size `h` and returns the 5th-order increment `step` (so
 `htry` and shrinks it until the scaled error is within tolerance, then
 advances `y` in place; `hdid` is the step actually taken and `hnext` a
 suggested size for the next step. It stops the program if the step size
-underflows.
+underflows, unless the optional trailing argument `ierr` is passed, in
+which case the status is returned there and `y` is left unchanged.
 
 `rkqs_vec(dydt, t, y, htry, atol, rtol, step, hdid, hnext, ierr[, dydt0])`
 is the library-friendly variant of `rkqs`:
@@ -209,8 +238,9 @@ is the library-friendly variant of `rkqs`:
 - `y` is not modified; the accepted increment is returned in `step`.
 - Failures are reported through `ierr` instead of `error stop`: the
   module exports the codes `rkqs_ok`, `rkqs_err_underflow` (the step size
-  rounds down to zero) and `rkqs_err_max_tries` (too many step
-  reductions). On `ierr /= rkqs_ok` the outputs are meaningless.
+  rounds down to zero), `rkqs_err_max_tries` (too many step
+  reductions) and `rkqs_err_overflow` (the step size grows without
+  bound). On `ierr /= rkqs_ok` the outputs are meaningless.
 - If the derivative at `(t, y)` is already known it can be passed as
   `dydt0`, saving one evaluation of `dydt` (also available for `rkck`).
 
